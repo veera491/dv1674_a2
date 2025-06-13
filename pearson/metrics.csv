@@ -1,1 +1,5 @@
 Input Size,Real Time (s),User Time (s),Sys Time (s),CPU (%),Max Mem (MiB),Page Faults,Voluntary Ctx Switches,Involuntary Ctx Switches,Read Calls,Write Calls,% Read Time,% Write Time,Pearson Function Time (%)
+,,,,,,,,,,,0,0,N/A
+,,,,,,,,,,,0,0,N/A
+,,,,,,,,,,,0,0,N/A
+,,,,,,,,,,,0,0,N/A
