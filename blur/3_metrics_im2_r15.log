@@ -1,0 +1,4 @@
+Linux 6.15.1-arch1-2 (LegionArch) 	06/14/25 	_x86_64_	(16 CPU)
+
+13:26:59      UID       PID    %usr %system  %guest   %wait    %CPU   CPU  Command
+13:27:00     1000   1896647   99.00    0.00    0.00    0.00   99.00     7  blur
