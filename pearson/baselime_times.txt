@@ -1,0 +1,78 @@
+ ./vmstat_pearson.sh
+Running Pearson for file 128.data...
+Monitoring process ID: 830215 for file: 128.data
+Run completed for file 128.data in 0.123 seconds (123 ms).
+Stopping monitoring...
+Running Valgrind Callgrind for file 128.data...
+==830225== Callgrind, a call-graph generating cache profiler
+==830225== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==830225== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==830225== Command: ./pearson ./data/128.data ./data/output_128_pearson.data
+==830225==
+==830225== For interactive control, run 'callgrind_control -h'.
+==830225==
+==830225== Events    : Ir
+==830225== Collected : 512936880
+==830225==
+==830225== I   refs:      512,936,880
+Callgrind completed for file 128.data in 2.484 seconds (2484 ms).
+Total processing time for 128.data: 2.613 seconds (2613 ms).
+Running Pearson for file 256.data...
+Monitoring process ID: 830311 for file: 256.data
+Run completed for file 256.data in 0.533 seconds (533 ms).
+Stopping monitoring...
+Running Valgrind Callgrind for file 256.data...
+==830321== Callgrind, a call-graph generating cache profiler
+==830321== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==830321== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==830321== Command: ./pearson ./data/256.data ./data/output_256_pearson.data
+==830321==
+==830321== For interactive control, run 'callgrind_control -h'.
+==830321==
+==830321== Events    : Ir
+==830321== Collected : 3899678726
+==830321==
+==830321== I   refs:      3,899,678,726
+Callgrind completed for file 256.data in 10.463 seconds (10463 ms).
+Total processing time for 256.data: 11.002 seconds (11002 ms).
+Running Pearson for file 512.data...
+Monitoring process ID: 830498 for file: 512.data
+Run completed for file 512.data in 3.765 seconds (3765 ms).
+Stopping monitoring...
+Running Valgrind Callgrind for file 512.data...
+==830566== Callgrind, a call-graph generating cache profiler
+==830566== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==830566== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==830566== Command: ./pearson ./data/512.data ./data/output_512_pearson.data
+==830566==
+==830566== For interactive control, run 'callgrind_control -h'.
+==830566==
+==830566== Events    : Ir
+==830566== Collected : 29429044092
+==830566==
+==830566== I   refs:      29,429,044,092
+Callgrind completed for file 512.data in 90.767 seconds (90767 ms).
+Total processing time for 512.data: 94.538 seconds (94538 ms).
+Running Pearson for file 1024.data...
+Monitoring process ID: 831794 for file: 1024.data
+Run completed for file 1024.data in 26.654 seconds (26654 ms).
+Stopping monitoring...
+Running Valgrind Callgrind for file 1024.data...
+==832132== Callgrind, a call-graph generating cache profiler
+==832132== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==832132== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==832132== Command: ./pearson ./data/1024.data ./data/output_1024_pearson.data
+==832132==
+==832132== For interactive control, run 'callgrind_control -h'.
+==832132== brk segment overflow in thread #1: can't grow to 0x4859000
+==832132== (see section Limitations in user manual)
+==832132== NOTE: further instances of this message will not be shown
+==832132==
+==832132== Events    : Ir
+==832132== Collected : 229661109039
+==832132==
+==832132== I   refs:      229,661,109,039
+Callgrind completed for file 1024.data in 529.683 seconds (529683 ms).
+Total processing time for 1024.data: 556.343 seconds (556343 ms).
+All dataset files have been processed and monitored!
+

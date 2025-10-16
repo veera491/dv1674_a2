@@ -1,0 +1,79 @@
+unning blur for file im1.ppm with radius 15...
+Monitoring process ID: 813647 for file: im1.ppm with radius: 15
+Run completed for file im1.ppm with radius 15 in 0.788 seconds (788 ms).
+Running Valgrind Callgrind for file im1.ppm with radius 15...
+==813697== Callgrind, a call-graph generating cache profiler
+==813697== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==813697== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==813697== Command: ./blur 15 ./data/im1.ppm ./data_o/output_im1_r15.ppm
+==813697==
+==813697== For interactive control, run 'callgrind_control -h'.
+==813697==
+==813697== Events    : Ir
+==813697== Collected : 6709436177
+==813697==
+==813697== I   refs:      6,709,436,177
+Callgrind completed for file  with radius 15 in 52.241 seconds (52241 ms).
+Total processing time for  with radius 15: 53.035 seconds (53035 ms).
+Running blur for file im2.ppm with radius 15...
+Monitoring process ID: 814681 for file: im2.ppm with radius: 15
+Run completed for file im2.ppm with radius 15 in 1.242 seconds (1242 ms).
+Running Valgrind Callgrind for file im2.ppm with radius 15...
+==814692== Callgrind, a call-graph generating cache profiler
+==814692== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==814692== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==814692== Command: ./blur 15 ./data/im2.ppm ./data_o/output_im2_r15.ppm
+==814692==
+==814692== For interactive control, run 'callgrind_control -h'.
+==814692== brk segment overflow in thread #1: can't grow to 0x48bd000
+==814692== (see section Limitations in user manual)
+==814692== NOTE: further instances of this message will not be shown
+==814692==
+==814692== Events    : Ir
+==814692== Collected : 13655715288
+==814692==
+==814692== I   refs:      13,655,715,288
+Callgrind completed for file  with radius 15 in 79.733 seconds (79733 ms).
+Total processing time for  with radius 15: 80.982 seconds (80982 ms).
+Running blur for file im3.ppm with radius 15...
+Monitoring process ID: 816278 for file: im3.ppm with radius: 15
+Run completed for file im3.ppm with radius 15 in 2.790 seconds (2790 ms).
+Running Valgrind Callgrind for file im3.ppm with radius 15...
+==816342== Callgrind, a call-graph generating cache profiler
+==816342== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==816342== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==816342== Command: ./blur 15 ./data/im3.ppm ./data_o/output_im3_r15.ppm
+==816342==
+==816342== For interactive control, run 'callgrind_control -h'.
+==816342== brk segment overflow in thread #1: can't grow to 0x49e5000
+==816342== (see section Limitations in user manual)
+==816342== NOTE: further instances of this message will not be shown
+==816342==
+==816342== Events    : Ir
+==816342== Collected : 25022703511
+==816342==
+==816342== I   refs:      25,022,703,511
+Callgrind completed for file  with radius 15 in 145.150 seconds (145150 ms).
+Total processing time for  with radius 15: 147.946 seconds (147946 ms).
+Running blur for file im4.ppm with radius 15...
+Monitoring process ID: 818267 for file: im4.ppm with radius: 15
+Run completed for file im4.ppm with radius 15 in 11.523 seconds (11523 ms).
+Running Valgrind Callgrind for file im4.ppm with radius 15...
+==818481== Callgrind, a call-graph generating cache profiler
+==818481== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==818481== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==818481== Command: ./blur 15 ./data/im4.ppm ./data_o/output_im4_r15.ppm
+==818481==
+==818481== For interactive control, run 'callgrind_control -h'.
+==818481== brk segment overflow in thread #1: can't grow to 0x4952000
+==818481== (see section Limitations in user manual)
+==818481== NOTE: further instances of this message will not be shown
+==818481==
+==818481== Events    : Ir
+==818481== Collected : 117441003525
+==818481==
+==818481== I   refs:      117,441,003,525
+Callgrind completed for file  with radius 15 in 716.238 seconds (716238 ms).
+Total processing time for  with radius 15: 727.767 seconds (727767 ms).
+All input files have been processed at radius 15 for baseline measurements.
+
