@@ -35,7 +35,7 @@ INPUT_FILES=("im1.ppm" "im2.ppm" "im3.ppm" "im4.ppm")
 RADIUS=15
 
 for FILE in "${INPUT_FILES[@]}"; do
-    OUTPUT_FILE="output_${FILE%.*}_r${RADIUS}.ppm"
+    OUTPUT_FILE="${FILE%.*}_seq.ppm"
     iteration_start=$(date +%s%3N)
     start_time=$(date +%s%3N)
 
