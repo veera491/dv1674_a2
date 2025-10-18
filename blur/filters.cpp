@@ -28,7 +28,7 @@ namespace Filter
                                         std::vector<double>& fullW)
     {
         fullW.resize(static_cast<std::size_t>(2 * radius + 1));
-        // halfW is already normalized for sum over [-R..R] to be 1:
+        // halfW is normalized for sum over [-R..R] == 1:
         // fullW[k+R] = halfW[abs(k)]
         for (int k = -radius; k <= radius; ++k)
             fullW[static_cast<std::size_t>(k + radius)] = halfW[static_cast<std::size_t>(std::abs(k))];
@@ -40,7 +40,7 @@ namespace Filter
         std::vector<double> halfW(static_cast<std::size_t>(radius) + 1);
         Gauss::get_weights(radius, halfW.data());
 
-        // Normalize so sum over k=-R..R equals 1.0
+        // Normalize so sum_{k=-R..R} == 1
         if (radius > 0) {
             double total = halfW[0];
             for (int i = 1; i <= radius; ++i) total += 2.0 * halfW[i];
@@ -50,18 +50,35 @@ namespace Filter
             halfW[0] = 1.0;
         }
 
-        // Build a full symmetric kernel of length (2R+1) for branch-free inner loops
+        // Build symmetric full kernel (2R+1)
         std::vector<double> fullW;
         make_full_kernel(halfW, radius, fullW);
 
-        // Keep original construction style (Matrix has no (w,h) ctor)
+        // Same construction style (Matrix has no (w,h) ctor)
         Matrix scratch{m};
         Matrix dst{m};
 
         const unsigned W = m.get_x_size();
         const unsigned H = m.get_y_size();
-
         if (W == 0u || H == 0u) return m;
+
+        // === Step 3: kill accessor overhead — cache raw channel pointers ===
+        // Source image (m)
+        unsigned char* rM = &m.r(0, 0);
+        unsigned char* gM = &m.g(0, 0);
+        unsigned char* bM = &m.b(0, 0);
+        // Scratch buffer (horizontal output)
+        unsigned char* rS = &scratch.r(0, 0);
+        unsigned char* gS = &scratch.g(0, 0);
+        unsigned char* bS = &scratch.b(0, 0);
+        // Destination image (vertical output)
+        unsigned char* rD = &dst.r(0, 0);
+        unsigned char* gD = &dst.g(0, 0);
+        unsigned char* bD = &dst.b(0, 0);
+
+        auto IDX = [W](unsigned x, unsigned y) -> std::size_t {
+            return static_cast<std::size_t>(y) * static_cast<std::size_t>(W) + static_cast<std::size_t>(x);
+        };
 
         // ---- Horizontal pass: per-row padded line buffers, then 1-D conv ----
         {
@@ -72,11 +89,14 @@ namespace Filter
 
             for (unsigned y = 0; y < H; ++y)
             {
-                // Fill middle from source row
+                const std::size_t rowBase = static_cast<std::size_t>(y) * static_cast<std::size_t>(W);
+
+                // Fill middle from source row using raw pointers (no accessors in loop)
                 for (unsigned x = 0; x < W; ++x) {
-                    rline[pad + x] = static_cast<double>(m.r(x, y));
-                    gline[pad + x] = static_cast<double>(m.g(x, y));
-                    bline[pad + x] = static_cast<double>(m.b(x, y));
+                    const std::size_t off = rowBase + x;
+                    rline[pad + x] = static_cast<double>(rM[off]);
+                    gline[pad + x] = static_cast<double>(gM[off]);
+                    bline[pad + x] = static_cast<double>(bM[off]);
                 }
 
                 // Edge replicate into the left padding
@@ -84,9 +104,7 @@ namespace Filter
                 const double gLeft = gline[pad + 0];
                 const double bLeft = bline[pad + 0];
                 for (std::size_t i = 0; i < pad; ++i) {
-                    rline[i] = rLeft;
-                    gline[i] = gLeft;
-                    bline[i] = bLeft;
+                    rline[i] = rLeft; gline[i] = gLeft; bline[i] = bLeft;
                 }
 
                 // Edge replicate into the right padding
@@ -99,13 +117,11 @@ namespace Filter
                     bline[pad + W + i] = bRight;
                 }
 
-                // Convolve into scratch
-                // out(x) = sum_{k=-R..R} fullW[k+R] * line[(x + k) + pad]
+                // Convolve into scratch using raw output pointers
                 for (unsigned x = 0; x < W; ++x) {
                     const std::size_t base = pad + x;
                     double accR = 0.0, accG = 0.0, accB = 0.0;
 
-                    // Tight inner loop: no clamp/abs, contiguous loads
                     for (int k = -radius; k <= radius; ++k) {
                         const double w = fullW[static_cast<std::size_t>(k + radius)];
                         const std::size_t idx = base + static_cast<std::size_t>(k);
@@ -114,9 +130,10 @@ namespace Filter
                         accB += w * bline[idx];
                     }
 
-                    scratch.r(x, y) = static_cast<unsigned char>(accR + 0.5); // rounded
-                    scratch.g(x, y) = static_cast<unsigned char>(accG + 0.5);
-                    scratch.b(x, y) = static_cast<unsigned char>(accB + 0.5);
+                    const std::size_t off = rowBase + x;
+                    rS[off] = static_cast<unsigned char>(accR + 0.5);
+                    gS[off] = static_cast<unsigned char>(accG + 0.5);
+                    bS[off] = static_cast<unsigned char>(accB + 0.5);
                 }
             }
         }
@@ -130,24 +147,23 @@ namespace Filter
 
             for (unsigned x = 0; x < W; ++x)
             {
-                // Fill middle from scratch column
+                // Fill middle from scratch column using raw pointers
                 for (unsigned y = 0; y < H; ++y) {
-                    rcol[pad + y] = static_cast<double>(scratch.r(x, y));
-                    gcol[pad + y] = static_cast<double>(scratch.g(x, y));
-                    bcol[pad + y] = static_cast<double>(scratch.b(x, y));
+                    const std::size_t off = IDX(x, y);
+                    rcol[pad + y] = static_cast<double>(rS[off]);
+                    gcol[pad + y] = static_cast<double>(gS[off]);
+                    bcol[pad + y] = static_cast<double>(bS[off]);
                 }
 
-                // Edge replicate into the top padding
+                // Edge replicate (top)
                 const double rTop = rcol[pad + 0];
                 const double gTop = gcol[pad + 0];
                 const double bTop = bcol[pad + 0];
                 for (std::size_t i = 0; i < pad; ++i) {
-                    rcol[i] = rTop;
-                    gcol[i] = gTop;
-                    bcol[i] = bTop;
+                    rcol[i] = rTop; gcol[i] = gTop; bcol[i] = bTop;
                 }
 
-                // Edge replicate into the bottom padding
+                // Edge replicate (bottom)
                 const double rBot = rcol[pad + (H - 1)];
                 const double gBot = gcol[pad + (H - 1)];
                 const double bBot = bcol[pad + (H - 1)];
@@ -157,7 +173,7 @@ namespace Filter
                     bcol[pad + H + i] = bBot;
                 }
 
-                // Convolve into dst
+                // Convolve into dst using raw output pointers
                 for (unsigned y = 0; y < H; ++y) {
                     const std::size_t base = pad + y;
                     double accR = 0.0, accG = 0.0, accB = 0.0;
@@ -170,9 +186,10 @@ namespace Filter
                         accB += w * bcol[idx];
                     }
 
-                    dst.r(x, y) = static_cast<unsigned char>(accR + 0.5);
-                    dst.g(x, y) = static_cast<unsigned char>(accG + 0.5);
-                    dst.b(x, y) = static_cast<unsigned char>(accB + 0.5);
+                    const std::size_t off = IDX(x, y);
+                    rD[off] = static_cast<unsigned char>(accR + 0.5);
+                    gD[off] = static_cast<unsigned char>(accG + 0.5);
+                    bD[off] = static_cast<unsigned char>(accB + 0.5);
                 }
             }
         }
