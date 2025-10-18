@@ -10,9 +10,9 @@ for thread in 1 2 4 8 16 32
 do
     for image in im1 im2 im3 im4
     do
-        ./blur_par 15 "data/$image.ppm" "./data_o/blur_${image}_par.ppm" $thread
+        ./blur 15 "data/$image.ppm" "./data_o/${image}_seq.ppm" $thread
 
-        if ! cmp -s "./data_o/blur_${image}.ppm" "./data_o/blur_${image}_par.ppm"
+        if ! cmp -s "./data_o/${image}.ppm" "./data_o/${image}_seq.ppm"
         then
             echo "${red}Error: Incongruent output data detected when blurring image $image.ppm with $thread thread(s)${reset}"
             status=1
