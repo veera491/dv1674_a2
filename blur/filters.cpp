@@ -16,10 +16,14 @@ Author: David Holmqvist <daae19@student.bth.se>
 #define FILTER_SMALL_R_UNROLL 8
 #endif
 
+// Tile size for blocked transpose (tune 16..64 depending on cache)
+#ifndef FILTER_TRANSPOSE_TILE
+#define FILTER_TRANSPOSE_TILE 32
+#endif
+
 namespace Filter {
 
 namespace Gauss {
-
 // Implemented here to satisfy the linker and keep everything self-contained.
 // weights[i] is the coefficient for offset ±i (0..n) before normalization.
 void get_weights(int n, double* weights_out)
@@ -33,7 +37,6 @@ void get_weights(int n, double* weights_out)
         weights_out[i] = std::exp(-x * x * pi);
     }
 }
-
 } // namespace Gauss
 
 // ------------------------ utilities ------------------------
@@ -80,19 +83,41 @@ static inline void planar_to_matrix(const float* __restrict r,
     }
 }
 
+// Blocked transpose: src is (H x W) in row-major, dst becomes (W x H) row-major.
+static inline void transpose_plane_blocked(const float* __restrict src,
+                                           float* __restrict dst,
+                                           unsigned W, unsigned H,
+                                           unsigned B = FILTER_TRANSPOSE_TILE)
+{
+    for (unsigned y0 = 0; y0 < H; y0 += B) {
+        const unsigned y1 = std::min(H, y0 + B);
+        for (unsigned x0 = 0; x0 < W; x0 += B) {
+            const unsigned x1 = std::min(W, x0 + B);
+            for (unsigned y = y0; y < y1; ++y) {
+                const unsigned srcRow = y * W;
+                for (unsigned x = x0; x < x1; ++x) {
+                    // (x, y) in src -> (y, x) in dst of size WxH -> index y*H + x
+                    dst[y * H + x] = src[srcRow + x];
+                }
+            }
+        }
+    }
+}
+
 // Pre-pad with reflected borders so inner loops have no bounds checks.
 static inline void reflect_pad_plane(const float* __restrict in,
                                      float* __restrict out,
                                      unsigned W, unsigned H, int R)
 {
     const unsigned PW = W + 2u * static_cast<unsigned>(R);
+
     // 1) center copy
     for (unsigned y = 0; y < H; ++y) {
         const unsigned srcRow = y * W;
         const unsigned dstRow = (y + static_cast<unsigned>(R)) * PW + static_cast<unsigned>(R);
         std::copy(in + srcRow, in + srcRow + W, out + dstRow);
     }
-    // 2) left/right reflect in each row
+    // 2) left/right reflect per row
     for (unsigned y = 0; y < H; ++y) {
         const unsigned dstRow = (y + static_cast<unsigned>(R)) * PW;
         for (int k = 0; k < R; ++k) {
@@ -102,7 +127,7 @@ static inline void reflect_pad_plane(const float* __restrict in,
                 out[dstRow + (static_cast<unsigned>(R) + W - 1u - static_cast<unsigned>(k))];
         }
     }
-    // 3) top/bottom reflect entire padded rows
+    // 3) top/bottom reflect full padded rows
     for (int k = 0; k < R; ++k) {
         const unsigned PWstride = PW;
         const unsigned srcTop    = (static_cast<unsigned>(R) + static_cast<unsigned>(k)) * PWstride;
@@ -115,8 +140,8 @@ static inline void reflect_pad_plane(const float* __restrict in,
 }
 
 // Convolve one padded row (branchless) and write **transposed** into dstT.
-//  - row_pad points to the *start of the padded row* (left padding is at +0).
-//  - We write result for output row y_out into transposed buffer at (x,y) -> dstT[x*H + y_out].
+//  - row_pad points to the *start of the padded row* (left padding at +0).
+//  - We write result for output row y_out into transposed buffer at (x,y)->dstT[x*H + y_out].
 static inline void gauss_row_padded_to_transposed(const float* __restrict row_pad,
                                                   float* __restrict dstT,
                                                   unsigned W, unsigned H, unsigned y_out,
@@ -124,7 +149,6 @@ static inline void gauss_row_padded_to_transposed(const float* __restrict row_pa
                                                   int radius)
 {
     const unsigned base = static_cast<unsigned>(radius);   // first valid sample
-    // No divide here: gw is pre-normalized to sum to 1.0 with symmetric pairs.
     for (unsigned x = 0; x < W; ++x) {
         const unsigned cx = base + x;
         float acc = gw[0] * row_pad[cx];
@@ -139,18 +163,18 @@ static inline void gauss_row_padded_to_transposed(const float* __restrict row_pa
     }
 }
 
-// Convolve one padded row (of the transposed image) and write **directly into final layout**.
-//  - For transposed grid (TW x TH) with TW=H, TH=W:
-//      output (x, y) in transposed corresponds to final (y, x),
-//      index in final planar = y * W + x.
-static inline void gauss_row_padded_transposed_to_final(const float* __restrict row_pad,
-                                                        float* __restrict dst_final,
-                                                        unsigned TW, unsigned TH, unsigned y_tr,
-                                                        const std::vector<float>& gw,
-                                                        int radius, unsigned W /*final width*/)
+// Convolve one padded row of the **transposed** image and write to another
+// transposed buffer (i.e., both src and dst are HxW row-major).
+static inline void gauss_row_padded_transposed_to_transposed(const float* __restrict row_pad,
+                                                             float* __restrict dstT,
+                                                             unsigned TW, unsigned TH, unsigned y_tr,
+                                                             const std::vector<float>& gw,
+                                                             int radius)
 {
+    // y_tr is the row index in the transposed grid (range [0..TH-1])
+    // TW is the width of the transposed grid (= original H)
     const unsigned base = static_cast<unsigned>(radius);
-    // y_tr runs over [0..TH-1], x runs [0..TW-1]; final(y,x) -> y*W + x
+    const unsigned row_start = y_tr * TW;
     for (unsigned x = 0; x < TW; ++x) {
         const unsigned cx = base + x;
         float acc = gw[0] * row_pad[cx];
@@ -160,9 +184,7 @@ static inline void gauss_row_padded_transposed_to_final(const float* __restrict 
             acc += w * ( row_pad[cx - static_cast<unsigned>(k)] +
                          row_pad[cx + static_cast<unsigned>(k)] );
         }
-        const unsigned out_index = x * W + y_tr;  // x == original y, y_tr == original x
-        // (y_final=W-row index, x_final=column)
-        dst_final[out_index] = acc;
+        dstT[row_start + x] = acc; // row-wise contiguous write
     }
 }
 
@@ -227,16 +249,21 @@ Matrix blur(Matrix m, const int radius)
     reflect_pad_plane(g_tr.data(), gtp.data(), TW, TH, radius);
     reflect_pad_plane(b_tr.data(), btp.data(), TW, TH, radius);
 
-    // 6) Pass 2: horizontal on padded transposed rows, **write back directly** into final (WxH)
-    std::vector<float> r_out(N), g_out(N), b_out(N);
+    // 6) Pass 2: horizontal on padded transposed rows, **write to transposed output** (HxW)
+    std::vector<float> r_tr2(N), g_tr2(N), b_tr2(N);
     for (unsigned y_tr = 0; y_tr < TH; ++y_tr) {
         const unsigned prow = (y_tr + static_cast<unsigned>(radius)) * TPW;
-        gauss_row_padded_transposed_to_final(rtp.data() + prow, r_out.data(), TW, TH, y_tr, gw, radius, W);
-        gauss_row_padded_transposed_to_final(gtp.data() + prow, g_out.data(), TW, TH, y_tr, gw, radius, W);
-        gauss_row_padded_transposed_to_final(btp.data() + prow, b_out.data(), TW, TH, y_tr, gw, radius, W);
+        gauss_row_padded_transposed_to_transposed(rtp.data() + prow, r_tr2.data(), TW, TH, y_tr, gw, radius);
+        gauss_row_padded_transposed_to_transposed(gtp.data() + prow, g_tr2.data(), TW, TH, y_tr, gw, radius);
+        gauss_row_padded_transposed_to_transposed(btp.data() + prow, b_tr2.data(), TW, TH, y_tr, gw, radius);
     }
 
-    // 7) Pack back to Matrix
+    // 7) Blocked transpose back to WxH (fast) & pack to Matrix
+    std::vector<float> r_out(N), g_out(N), b_out(N);
+    transpose_plane_blocked(r_tr2.data(), r_out.data(), TW, TH); // (H x W) -> (W x H)
+    transpose_plane_blocked(g_tr2.data(), g_out.data(), TW, TH);
+    transpose_plane_blocked(b_tr2.data(), b_out.data(), TW, TH);
+
     Matrix dst{m};
     planar_to_matrix(r_out.data(), g_out.data(), b_out.data(), dst);
     return dst;
