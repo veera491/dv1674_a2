@@ -1,108 +1,65 @@
-/*
-Author: David Holmqvist <daae19@student.bth.se>
-*/
-
 #include "filters.hpp"
-#include "matrix.hpp"
-#include "ppm.hpp"
 #include <cmath>
+#include <cassert>
+#include <vector>
 
-namespace Filter
-{
+namespace Filter {
+namespace Gauss {
 
-    namespace Gauss
-    {
-        void get_weights(int n, double *weights_out)
-        {
-            for (auto i{0}; i <= n; i++)
-            {
-                double x{static_cast<double>(i) * max_x / n};
-                weights_out[i] = exp(-x * x * pi);
-            }
-        }
-    }
-
-    Matrix blur(Matrix m, const int radius)
-    {
-        Matrix scratch{PPM::max_dimension};
-        auto dst{m};
-
-        for (auto x{0}; x < dst.get_x_size(); x++)
-        {
-            for (auto y{0}; y < dst.get_y_size(); y++)
-            {
-                double w[Gauss::max_radius]{};
-                Gauss::get_weights(radius, w);
-
-                // unsigned char Matrix::r(unsigned x, unsigned y) const
-                // {
-                //     return R[y * x_size + x];
-                // }
-
-                auto r{w[0] * dst.r(x, y)}, g{w[0] * dst.g(x, y)}, b{w[0] * dst.b(x, y)}, n{w[0]};
-
-                for (auto wi{1}; wi <= radius; wi++)
-                {
-                    auto wc{w[wi]};
-                    auto x2{x - wi};
-                    if (x2 >= 0)
-                    {
-                        r += wc * dst.r(x2, y);
-                        g += wc * dst.g(x2, y);
-                        b += wc * dst.b(x2, y);
-                        n += wc;
-                    }
-                    x2 = x + wi;
-                    if (x2 < dst.get_x_size())
-                    {
-                        r += wc * dst.r(x2, y);
-                        g += wc * dst.g(x2, y);
-                        b += wc * dst.b(x2, y);
-                        n += wc;
-                    }
-                }
-                scratch.r(x, y) = r / n;
-                scratch.g(x, y) = g / n;
-                scratch.b(x, y) = b / n;
-            }
-        }
-
-        for (auto x{0}; x < dst.get_x_size(); x++)
-        {
-            for (auto y{0}; y < dst.get_y_size(); y++)
-            {
-                double w[Gauss::max_radius]{};
-                Gauss::get_weights(radius, w);
-
-                auto r{w[0] * scratch.r(x, y)}, g{w[0] * scratch.g(x, y)}, b{w[0] * scratch.b(x, y)}, n{w[0]};
-
-                for (auto wi{1}; wi <= radius; wi++)
-                {
-                    auto wc{w[wi]};
-                    auto y2{y - wi};
-                    if (y2 >= 0)
-                    {
-                        r += wc * scratch.r(x, y2);
-                        g += wc * scratch.g(x, y2);
-                        b += wc * scratch.b(x, y2);
-                        n += wc;
-                    }
-                    y2 = y + wi;
-                    if (y2 < dst.get_y_size())
-                    {
-                        r += wc * scratch.r(x, y2);
-                        g += wc * scratch.g(x, y2);
-                        b += wc * scratch.b(x, y2);
-                        n += wc;
-                    }
-                }
-                dst.r(x, y) = r / n;
-                dst.g(x, y) = g / n;
-                dst.b(x, y) = b / n;
-            }
-        }
-
-        return dst;
-    }
-
+// A simple rule-of-thumb mapping from radius -> sigma.
+static inline float default_sigma(int radius) {
+    return (radius <= 0) ? 0.0f : (radius * 0.5f + 0.5f);
 }
+
+const std::vector<float>& get_weights(int radius) {
+    assert(radius >= 0);
+
+    static thread_local int    cached_radius = -1;
+    static thread_local float  cached_sigma  = -1.0f;
+    static thread_local std::vector<float> kernel;
+
+    if (radius == 0) {
+        // Degenerate case: identity kernel
+        if (cached_radius != 0 || kernel.size() != 1) {
+            kernel.assign(1, 1.0f);
+            cached_radius = 0;
+            cached_sigma  = 0.0f;
+        }
+        return kernel;
+    }
+
+    const float sigma = default_sigma(radius);
+
+    // Only (re)build when parameters change (or the buffer doesn't match size).
+    const int needed_size = 2 * radius + 1;
+    const bool need_rebuild = (cached_radius != radius) ||
+                              (cached_sigma  != sigma)  ||
+                              (static_cast<int>(kernel.size()) != needed_size);
+
+    if (need_rebuild) {
+        kernel.resize(needed_size);
+
+        const float twoSigma2 = 2.0f * sigma * sigma;
+        float sum = 0.0f;
+
+        // Symmetric weights centered at 0
+        for (int i = -radius; i <= radius; ++i) {
+            // Using float math is faster and fully adequate for 8-bit images
+            const float w = std::exp(-(static_cast<float>(i * i)) / twoSigma2);
+            kernel[i + radius] = w;
+            sum += w;
+        }
+
+        // Normalize so sum(weights) == 1.0
+        const float inv = 1.0f / sum;
+        for (float& w : kernel) w *= inv;
+
+        cached_radius = radius;
+        cached_sigma  = sigma;
+    }
+
+    return kernel;
+}
+
+} // namespace Gauss
+} // namespace Filter
