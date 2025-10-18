@@ -18,7 +18,7 @@ do
             status=1
         fi
 
-        rm "./data_o/blur_${image}_par.ppm"
+        rm "./data_o/${image}_seq.ppm"
     done
 done
 
