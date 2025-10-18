@@ -13,6 +13,7 @@ namespace Filter
 
     namespace Gauss
     {
+        // unchanged: builds weights[0..radius] once per radius
         void get_weights(int n, double *weights_out)
         {
             for (auto i{0}; i <= n; i++)
@@ -23,174 +24,324 @@ namespace Filter
         }
     }
 
-    // Helper: make a full symmetric kernel of length (2R+1) from half-weights [0..R]
-    static inline void make_full_kernel(const std::vector<double>& halfW, int radius,
-                                        std::vector<double>& fullW)
+    // --- Optional: O(1) per-pixel box-blur (rolling sum) fast path -----------
+    // OFF by default to keep output identical to your Gaussian implementation.
+    // Enable by compiling with:  -DFILTER_BOX_BLUR
+#ifdef FILTER_BOX_BLUR
+    static void horizontal_box(const Matrix& in, Matrix& tmp, int radius)
     {
-        fullW.resize(static_cast<std::size_t>(2 * radius + 1));
-        // halfW is normalized for sum over [-R..R] == 1:
-        // fullW[k+R] = halfW[abs(k)]
-        for (int k = -radius; k <= radius; ++k)
-            fullW[static_cast<std::size_t>(k + radius)] = halfW[static_cast<std::size_t>(std::abs(k))];
+        const unsigned W = in.get_x_size();
+        const unsigned H = in.get_y_size();
+        if (radius == 0 || W == 0 || H == 0) { tmp = in; return; }
+
+        const int win = 2*radius + 1;
+        for (unsigned y = 0; y < H; ++y)
+        {
+            // rolling sums for each channel
+            double sr = 0.0, sg = 0.0, sb = 0.0;
+
+            // initialize window [0 .. radius] with clamping to edges
+            for (int dx = -radius; dx <= radius; ++dx)
+            {
+                unsigned xx = (dx < 0) ? 0u : (dx >= (int)W ? W-1 : (unsigned)dx);
+                sr += in.r(xx, y);
+                sg += in.g(xx, y);
+                sb += in.b(xx, y);
+            }
+            tmp.r(0, y) = sr / win;
+            tmp.g(0, y) = sg / win;
+            tmp.b(0, y) = sb / win;
+
+            for (unsigned x = 1; x < W; ++x)
+            {
+                int xl = (int)x - radius - 1;
+                int xr = (int)x + radius;
+                unsigned x_out = (xr >= (int)W) ? (W - 1) : (unsigned)xr;
+                unsigned x_in  = (xl < 0)       ? 0u       : (unsigned)xl;
+
+                sr += in.r(x_out, y) - in.r(x_in, y);
+                sg += in.g(x_out, y) - in.g(x_in, y);
+                sb += in.b(x_out, y) - in.b(x_in, y);
+
+                tmp.r(x, y) = sr / win;
+                tmp.g(x, y) = sg / win;
+                tmp.b(x, y) = sb / win;
+            }
+        }
     }
+
+    static void vertical_box(const Matrix& tmp, Matrix& out, int radius)
+    {
+        const unsigned W = tmp.get_x_size();
+        const unsigned H = tmp.get_y_size();
+        if (radius == 0 || W == 0 || H == 0) { out = tmp; return; }
+
+        const int win = 2*radius + 1;
+        for (unsigned x = 0; x < W; ++x)
+        {
+            double sr = 0.0, sg = 0.0, sb = 0.0;
+
+            for (int dy = -radius; dy <= radius; ++dy)
+            {
+                unsigned yy = (dy < 0) ? 0u : (dy >= (int)H ? H-1 : (unsigned)dy);
+                sr += tmp.r(x, yy);
+                sg += tmp.g(x, yy);
+                sb += tmp.b(x, yy);
+            }
+            out.r(x, 0) = sr / win;
+            out.g(x, 0) = sg / win;
+            out.b(x, 0) = sb / win;
+
+            for (unsigned y = 1; y < H; ++y)
+            {
+                int yu = (int)y - radius - 1;
+                int yd = (int)y + radius;
+                unsigned y_out = (yd >= (int)H) ? (H - 1) : (unsigned)yd;
+                unsigned y_in  = (yu < 0)       ? 0u       : (unsigned)yu;
+
+                sr += tmp.r(x, y_out) - tmp.r(x, y_in);
+                sg += tmp.g(x, y_out) - tmp.g(x, y_in);
+                sb += tmp.b(x, y_out) - tmp.b(x, y_in);
+
+                out.r(x, y) = sr / win;
+                out.g(x, y) = sg / win;
+                out.b(x, y) = sb / win;
+            }
+        }
+    }
+#endif
+    // ------------------------------------------------------------------------
 
     Matrix blur(Matrix m, const int radius)
     {
-        // === Step 1 (kept): precompute Gaussian half-kernel once per call ===
-        std::vector<double> halfW(static_cast<std::size_t>(radius) + 1);
-        Gauss::get_weights(radius, halfW.data());
+        // === from step #1: precompute Gaussian weights once per call ===
+        std::vector<double> gw(static_cast<std::size_t>(radius) + 1);
+        Gauss::get_weights(radius, gw.data());
 
-        // Normalize so sum_{k=-R..R} == 1
-        if (radius > 0) {
-            double total = halfW[0];
-            for (int i = 1; i <= radius; ++i) total += 2.0 * halfW[i];
-            const double inv = 1.0 / total;
-            for (double& w : halfW) w *= inv;
-        } else {
-            halfW[0] = 1.0;
-        }
-
-        // Build symmetric full kernel (2R+1)
-        std::vector<double> fullW;
-        make_full_kernel(halfW, radius, fullW);
-
-        // Same construction style (Matrix has no (w,h) ctor)
-        Matrix scratch{m};
-        Matrix dst{m};
-
+        // cache image geometry (step #3: kill accessor overhead for sizes)
         const unsigned W = m.get_x_size();
         const unsigned H = m.get_y_size();
-        if (W == 0u || H == 0u) return m;
 
-        // === Step 3: kill accessor overhead — cache raw channel pointers ===
-        // Source image (m)
-        unsigned char* rM = &m.r(0, 0);
-        unsigned char* gM = &m.g(0, 0);
-        unsigned char* bM = &m.b(0, 0);
-        // Scratch buffer (horizontal output)
-        unsigned char* rS = &scratch.r(0, 0);
-        unsigned char* gS = &scratch.g(0, 0);
-        unsigned char* bS = &scratch.b(0, 0);
-        // Destination image (vertical output)
-        unsigned char* rD = &dst.r(0, 0);
-        unsigned char* gD = &dst.g(0, 0);
-        unsigned char* bD = &dst.b(0, 0);
+        Matrix scratch{m}; // will hold horizontal pass
+        Matrix dst{m};     // final
 
-        auto IDX = [W](unsigned x, unsigned y) -> std::size_t {
-            return static_cast<std::size_t>(y) * static_cast<std::size_t>(W) + static_cast<std::size_t>(x);
-        };
+#ifdef FILTER_BOX_BLUR
+        // --- Step #4: optional O(1) box blur path (kept OFF by default) ---
+        horizontal_box(m, scratch, radius);
+        vertical_box(scratch, dst, radius);
+        return dst;
+#endif
 
-        // ---- Horizontal pass: per-row padded line buffers, then 1-D conv ----
+        // === Steps #2, #5 for Gaussian (separable + branchless interior) ===
+        // Precompute full-window normalization for interior (no border loss).
+        // For symmetric kernel: norm_full = w0 + 2 * sum(wi, i=1..radius)
+        double norm_full = gw[0];
+        for (int i = 1; i <= radius; ++i) norm_full += 2.0 * gw[i];
+
+        // ----------------- Horizontal pass -----------------
+        for (unsigned y = 0; y < H; ++y)
         {
-            const std::size_t pad = static_cast<std::size_t>(radius);
-            const std::size_t lineLen = static_cast<std::size_t>(W) + 2 * pad;
-
-            std::vector<double> rline(lineLen), gline(lineLen), bline(lineLen);
-
-            for (unsigned y = 0; y < H; ++y)
+            // Left edge: x in [0, radius-1] → needs boundary checks
+            for (unsigned x = 0; x < std::min<unsigned>(W, (unsigned)radius); ++x)
             {
-                const std::size_t rowBase = static_cast<std::size_t>(y) * static_cast<std::size_t>(W);
+                double r = gw[0] * m.r(x, y);
+                double g = gw[0] * m.g(x, y);
+                double b = gw[0] * m.b(x, y);
+                double n = gw[0];
 
-                // Fill middle from source row using raw pointers (no accessors in loop)
-                for (unsigned x = 0; x < W; ++x) {
-                    const std::size_t off = rowBase + x;
-                    rline[pad + x] = static_cast<double>(rM[off]);
-                    gline[pad + x] = static_cast<double>(gM[off]);
-                    bline[pad + x] = static_cast<double>(bM[off]);
-                }
+                for (int k = 1; k <= radius; ++k)
+                {
+                    double w = gw[k];
 
-                // Edge replicate into the left padding
-                const double rLeft = rline[pad + 0];
-                const double gLeft = gline[pad + 0];
-                const double bLeft = bline[pad + 0];
-                for (std::size_t i = 0; i < pad; ++i) {
-                    rline[i] = rLeft; gline[i] = gLeft; bline[i] = bLeft;
-                }
-
-                // Edge replicate into the right padding
-                const double rRight = rline[pad + (W - 1)];
-                const double gRight = gline[pad + (W - 1)];
-                const double bRight = bline[pad + (W - 1)];
-                for (std::size_t i = 0; i < pad; ++i) {
-                    rline[pad + W + i] = rRight;
-                    gline[pad + W + i] = gRight;
-                    bline[pad + W + i] = bRight;
-                }
-
-                // Convolve into scratch using raw output pointers
-                for (unsigned x = 0; x < W; ++x) {
-                    const std::size_t base = pad + x;
-                    double accR = 0.0, accG = 0.0, accB = 0.0;
-
-                    for (int k = -radius; k <= radius; ++k) {
-                        const double w = fullW[static_cast<std::size_t>(k + radius)];
-                        const std::size_t idx = base + static_cast<std::size_t>(k);
-                        accR += w * rline[idx];
-                        accG += w * gline[idx];
-                        accB += w * bline[idx];
+                    // left neighbor (clamped)
+                    if (x >= (unsigned)k) {
+                        unsigned xx = x - (unsigned)k;
+                        r += w * m.r(xx, y);
+                        g += w * m.g(xx, y);
+                        b += w * m.b(xx, y);
+                        n += w;
                     }
 
-                    const std::size_t off = rowBase + x;
-                    rS[off] = static_cast<unsigned char>(accR + 0.5);
-                    gS[off] = static_cast<unsigned char>(accG + 0.5);
-                    bS[off] = static_cast<unsigned char>(accB + 0.5);
+                    // right neighbor (clamped)
+                    unsigned xr = x + (unsigned)k;
+                    if (xr < W) {
+                        r += w * m.r(xr, y);
+                        g += w * m.g(xr, y);
+                        b += w * m.b(xr, y);
+                        n += w;
+                    }
                 }
+
+                scratch.r(x, y) = r / n;
+                scratch.g(x, y) = g / n;
+                scratch.b(x, y) = b / n;
+            }
+
+            // Interior: x in [radius, W-1-radius] → no bounds checks
+            if (W > (unsigned)(2*radius))
+            {
+                for (unsigned x = (unsigned)radius; x < W - (unsigned)radius; ++x)
+                {
+                    double r = gw[0] * m.r(x, y);
+                    double g = gw[0] * m.g(x, y);
+                    double b = gw[0] * m.b(x, y);
+
+                    for (int k = 1; k <= radius; ++k)
+                    {
+                        double w = gw[k];
+                        unsigned xl = x - (unsigned)k;
+                        unsigned xr = x + (unsigned)k;
+
+                        r += w * ( m.r(xl, y) + m.r(xr, y) );
+                        g += w * ( m.g(xl, y) + m.g(xr, y) );
+                        b += w * ( m.b(xl, y) + m.b(xr, y) );
+                    }
+
+                    // no need to compute n per pixel, use constant full-window sum
+                    scratch.r(x, y) = r / norm_full;
+                    scratch.g(x, y) = g / norm_full;
+                    scratch.b(x, y) = b / norm_full;
+                }
+            }
+
+            // Right edge: x in [max(radius, W-radius) .. W-1] → boundary checks
+            unsigned x_start = (W > (unsigned)radius) ? (W - (unsigned)radius) : 0u;
+            for (unsigned x = x_start; x < W; ++x)
+            {
+                double r = gw[0] * m.r(x, y);
+                double g = gw[0] * m.g(x, y);
+                double b = gw[0] * m.b(x, y);
+                double n = gw[0];
+
+                for (int k = 1; k <= radius; ++k)
+                {
+                    double w = gw[k];
+
+                    // left
+                    if (x >= (unsigned)k) {
+                        unsigned xl = x - (unsigned)k;
+                        r += w * m.r(xl, y);
+                        g += w * m.g(xl, y);
+                        b += w * m.b(xl, y);
+                        n += w;
+                    }
+
+                    // right
+                    unsigned xr = x + (unsigned)k;
+                    if (xr < W) {
+                        r += w * m.r(xr, y);
+                        g += w * m.g(xr, y);
+                        b += w * m.b(xr, y);
+                        n += w;
+                    }
+                }
+
+                scratch.r(x, y) = r / n;
+                scratch.g(x, y) = g / n;
+                scratch.b(x, y) = b / n;
             }
         }
 
-        // ---- Vertical pass: per-column padded line buffers, then 1-D conv ----
+        // ----------------- Vertical pass -----------------
+        for (unsigned x = 0; x < W; ++x)
         {
-            const std::size_t pad = static_cast<std::size_t>(radius);
-            const std::size_t lineLen = static_cast<std::size_t>(H) + 2 * pad;
-
-            std::vector<double> rcol(lineLen), gcol(lineLen), bcol(lineLen);
-
-            for (unsigned x = 0; x < W; ++x)
+            // Top edge: y in [0, radius-1]
+            for (unsigned y = 0; y < std::min<unsigned>(H, (unsigned)radius); ++y)
             {
-                // Fill middle from scratch column using raw pointers
-                for (unsigned y = 0; y < H; ++y) {
-                    const std::size_t off = IDX(x, y);
-                    rcol[pad + y] = static_cast<double>(rS[off]);
-                    gcol[pad + y] = static_cast<double>(gS[off]);
-                    bcol[pad + y] = static_cast<double>(bS[off]);
-                }
+                double r = gw[0] * scratch.r(x, y);
+                double g = gw[0] * scratch.g(x, y);
+                double b = gw[0] * scratch.b(x, y);
+                double n = gw[0];
 
-                // Edge replicate (top)
-                const double rTop = rcol[pad + 0];
-                const double gTop = gcol[pad + 0];
-                const double bTop = bcol[pad + 0];
-                for (std::size_t i = 0; i < pad; ++i) {
-                    rcol[i] = rTop; gcol[i] = gTop; bcol[i] = bTop;
-                }
+                for (int k = 1; k <= radius; ++k)
+                {
+                    double w = gw[k];
 
-                // Edge replicate (bottom)
-                const double rBot = rcol[pad + (H - 1)];
-                const double gBot = gcol[pad + (H - 1)];
-                const double bBot = bcol[pad + (H - 1)];
-                for (std::size_t i = 0; i < pad; ++i) {
-                    rcol[pad + H + i] = rBot;
-                    gcol[pad + H + i] = gBot;
-                    bcol[pad + H + i] = bBot;
-                }
-
-                // Convolve into dst using raw output pointers
-                for (unsigned y = 0; y < H; ++y) {
-                    const std::size_t base = pad + y;
-                    double accR = 0.0, accG = 0.0, accB = 0.0;
-
-                    for (int k = -radius; k <= radius; ++k) {
-                        const double w = fullW[static_cast<std::size_t>(k + radius)];
-                        const std::size_t idx = base + static_cast<std::size_t>(k);
-                        accR += w * rcol[idx];
-                        accG += w * gcol[idx];
-                        accB += w * bcol[idx];
+                    // up
+                    if (y >= (unsigned)k) {
+                        unsigned yu = y - (unsigned)k;
+                        r += w * scratch.r(x, yu);
+                        g += w * scratch.g(x, yu);
+                        b += w * scratch.b(x, yu);
+                        n += w;
                     }
 
-                    const std::size_t off = IDX(x, y);
-                    rD[off] = static_cast<unsigned char>(accR + 0.5);
-                    gD[off] = static_cast<unsigned char>(accG + 0.5);
-                    bD[off] = static_cast<unsigned char>(accB + 0.5);
+                    // down
+                    unsigned yd = y + (unsigned)k;
+                    if (yd < H) {
+                        r += w * scratch.r(x, yd);
+                        g += w * scratch.g(x, yd);
+                        b += w * scratch.b(x, yd);
+                        n += w;
+                    }
                 }
+
+                dst.r(x, y) = r / n;
+                dst.g(x, y) = g / n;
+                dst.b(x, y) = b / n;
+            }
+
+            // Interior: y in [radius, H-1-radius] → no bounds checks
+            if (H > (unsigned)(2*radius))
+            {
+                for (unsigned y = (unsigned)radius; y < H - (unsigned)radius; ++y)
+                {
+                    double r = gw[0] * scratch.r(x, y);
+                    double g = gw[0] * scratch.g(x, y);
+                    double b = gw[0] * scratch.b(x, y);
+
+                    for (int k = 1; k <= radius; ++k)
+                    {
+                        double w = gw[k];
+                        unsigned yu = y - (unsigned)k;
+                        unsigned yd = y + (unsigned)k;
+
+                        r += w * ( scratch.r(x, yu) + scratch.r(x, yd) );
+                        g += w * ( scratch.g(x, yu) + scratch.g(x, yd) );
+                        b += w * ( scratch.b(x, yu) + scratch.b(x, yd) );
+                    }
+
+                    dst.r(x, y) = r / norm_full;
+                    dst.g(x, y) = g / norm_full;
+                    dst.b(x, y) = b / norm_full;
+                }
+            }
+
+            // Bottom edge: y in [max(radius, H-radius) .. H-1]
+            unsigned y_start = (H > (unsigned)radius) ? (H - (unsigned)radius) : 0u;
+            for (unsigned y = y_start; y < H; ++y)
+            {
+                double r = gw[0] * scratch.r(x, y);
+                double g = gw[0] * scratch.g(x, y);
+                double b = gw[0] * scratch.b(x, y);
+                double n = gw[0];
+
+                for (int k = 1; k <= radius; ++k)
+                {
+                    double w = gw[k];
+
+                    // up
+                    if (y >= (unsigned)k) {
+                        unsigned yu = y - (unsigned)k;
+                        r += w * scratch.r(x, yu);
+                        g += w * scratch.g(x, yu);
+                        b += w * scratch.b(x, yu);
+                        n += w;
+                    }
+
+                    // down
+                    unsigned yd = y + (unsigned)k;
+                    if (yd < H) {
+                        r += w * scratch.r(x, yd);
+                        g += w * scratch.g(x, yd);
+                        b += w * scratch.b(x, yd);
+                        n += w;
+                    }
+                }
+
+                dst.r(x, y) = r / n;
+                dst.g(x, y) = g / n;
+                dst.b(x, y) = b / n;
             }
         }
 
