@@ -160,7 +160,8 @@ static inline void gauss_row_padded_transposed_to_final(const float* __restrict 
             acc += w * ( row_pad[cx - static_cast<unsigned>(k)] +
                          row_pad[cx + static_cast<unsigned>(k)] );
         }
-        const unsigned out_index = y_tr * W + x; // (y_final=W-row index, x_final=column)
+        const unsigned out_index = x * W + y_tr;  // x == original y, y_tr == original x
+        // (y_final=W-row index, x_final=column)
         dst_final[out_index] = acc;
     }
 }
