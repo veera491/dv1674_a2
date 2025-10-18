@@ -6,7 +6,7 @@ Author: David Holmqvist <daae19@student.bth.se>
 #include "matrix.hpp"
 #include "ppm.hpp"
 #include <cmath>
-#include <vector>
+#include <vector>   // added for precomputed weights buffer
 
 namespace Filter
 {
@@ -25,35 +25,42 @@ namespace Filter
 
     Matrix blur(Matrix m, const int radius)
     {
-        // Precompute Gaussian weights once per call (avoid per-pixel recomputation)
-        std::vector<double> __weights(radius + 1);
-        Filter::Gauss::get_weights(radius, __weights.data());
+        // === Optimization #1: precompute Gaussian weights once per call ===
+        // (instead of allocating w[] and calling get_weights(...) inside each pixel loop)
+        std::vector<double> __weights(static_cast<std::size_t>(radius) + 1);
+        Gauss::get_weights(radius, __weights.data());
 
-        Matrix scratch(m.get_x_size(), m.get_y_size());
-        Matrix dst(m.get_x_size(), m.get_y_size());
+        // keep original construction style (Matrix has no (w,h) ctor)
+        Matrix scratch{m};
+        Matrix dst{m};
 
         // Horizontal pass
         for (auto y{0u}; y < m.get_y_size(); y++)
         {
             for (auto x{0u}; x < m.get_x_size(); x++)
             {
-                // use precomputed __weights instead of recomputing per pixel
-                auto r{__weights[0] * m.r(x, y)}, g{__weights[0] * m.g(x, y)}, b{__weights[0] * m.b(x, y)}, n{__weights[0]};
+                // use precomputed __weights instead of per-pixel w[] + get_weights(...)
+                auto r{__weights[0] * m.r(x, y)};
+                auto g{__weights[0] * m.g(x, y)};
+                auto b{__weights[0] * m.b(x, y)};
+                auto n{__weights[0]};
 
                 for (auto wi{1}; wi <= radius; wi++)
                 {
                     auto wc{__weights[wi]};
+
                     // left
-                    if (x >= wi)
+                    if (x >= static_cast<unsigned>(wi))
                     {
-                        auto x2{x - wi};
+                        auto x2{x - static_cast<unsigned>(wi)};
                         r += wc * m.r(x2, y);
                         g += wc * m.g(x2, y);
                         b += wc * m.b(x2, y);
                         n += wc;
                     }
+
                     // right
-                    auto x3{x + wi};
+                    auto x3{x + static_cast<unsigned>(wi)};
                     if (x3 < m.get_x_size())
                     {
                         r += wc * m.r(x3, y);
@@ -73,23 +80,28 @@ namespace Filter
         {
             for (auto y{0u}; y < m.get_y_size(); y++)
             {
-                // use precomputed __weights instead of recomputing per pixel
-                auto r{__weights[0] * scratch.r(x, y)}, g{__weights[0] * scratch.g(x, y)}, b{__weights[0] * scratch.b(x, y)}, n{__weights[0]};
+                // use precomputed __weights instead of per-pixel w[] + get_weights(...)
+                auto r{__weights[0] * scratch.r(x, y)};
+                auto g{__weights[0] * scratch.g(x, y)};
+                auto b{__weights[0] * scratch.b(x, y)};
+                auto n{__weights[0]};
 
                 for (auto wi{1}; wi <= radius; wi++)
                 {
                     auto wc{__weights[wi]};
+
                     // up
-                    if (y >= wi)
+                    if (y >= static_cast<unsigned>(wi))
                     {
-                        auto y2{y - wi};
+                        auto y2{y - static_cast<unsigned>(wi)};
                         r += wc * scratch.r(x, y2);
                         g += wc * scratch.g(x, y2);
                         b += wc * scratch.b(x, y2);
                         n += wc;
                     }
+
                     // down
-                    auto y3{y + wi};
+                    auto y3{y + static_cast<unsigned>(wi)};
                     if (y3 < m.get_y_size())
                     {
                         r += wc * scratch.r(x, y3);
