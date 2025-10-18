@@ -1,16 +1,26 @@
-#pragma once
-#include <vector>
+/*
+Author: David Holmqvist <daae19@student.bth.se>
+*/
 
-namespace Filter {
-    namespace Gauss {
+#include "matrix.hpp"
 
-        /// Returns a normalized 1D Gaussian kernel for a given blur radius.
-        /// The kernel is cached per thread, so it is computed only once per radius.
-        /// Thread-safe and efficient for both sequential and parallel execution.
-        ///
-        /// @param radius  Non-negative blur radius (kernel width = 2*radius + 1)
-        /// @return        Reference to the cached normalized weights (sum == 1.0f)
-        const std::vector<float>& get_weights(int radius);
+#if !defined(FILTERS_HPP)
+#define FILTERS_HPP
 
-    } // namespace Gauss
-} // namespace Filter
+namespace Filter
+{
+
+    namespace Gauss
+    {
+        constexpr unsigned max_radius{1000};
+        constexpr float max_x{1.33};
+        constexpr float pi{3.14159};
+
+        void get_weights(int n, double *weights_out);
+    }
+
+    Matrix blur(Matrix m, const int radius);
+
+}
+
+#endif
