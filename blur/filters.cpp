@@ -4,63 +4,60 @@
 #include <vector>
 
 namespace Filter {
-namespace Gauss {
+    namespace Gauss {
 
-// A simple rule-of-thumb mapping from radius -> sigma.
-// If your course skeleton defines a specific sigma policy, feel free to
-// replace this with that exact rule. The kernel is normalized either way.
-static inline float default_sigma(int radius) {
-    return (radius <= 0) ? 0.0f : (radius * 0.5f + 0.5f);
-}
-
-const std::vector<float>& get_weights(int radius) {
-    assert(radius >= 0);
-
-    static thread_local int    cached_radius = -1;
-    static thread_local float  cached_sigma  = -1.0f;
-    static thread_local std::vector<float> kernel;
-
-    if (radius == 0) {
-        // Degenerate case: identity kernel
-        if (cached_radius != 0 || kernel.size() != 1) {
-            kernel.assign(1, 1.0f);
-            cached_radius = 0;
-            cached_sigma  = 0.0f;
-        }
-        return kernel;
-    }
-
-    const float sigma = default_sigma(radius);
-
-    const int needed_size = 2 * radius + 1;
-    const bool need_rebuild = (cached_radius != radius) ||
-                              (cached_sigma  != sigma)  ||
-                              (static_cast<int>(kernel.size()) != needed_size);
-
-    if (need_rebuild) {
-        kernel.resize(needed_size);
-
-        const float twoSigma2 = 2.0f * sigma * sigma;
-        float sum = 0.0f;
-
-        // Symmetric weights centered at 0
-        for (int i = -radius; i <= radius; ++i) {
-            // Using float math is faster and fully adequate for 8-bit images
-            const float w = std::exp(-(static_cast<float>(i * i)) / twoSigma2);
-            kernel[i + radius] = w;
-            sum += w;
+        // Compute a default sigma based on the blur radius.
+        // You can adjust this formula if your course defines another relationship.
+        static inline float default_sigma(int radius) {
+            return (radius <= 0) ? 0.0f : (radius * 0.5f + 0.5f);
         }
 
-        // Normalize so sum(weights) == 1.0
-        const float inv = 1.0f / sum;
-        for (float& w : kernel) w *= inv;
+        const std::vector<float>& get_weights(int radius) {
+            assert(radius >= 0);
 
-        cached_radius = radius;
-        cached_sigma  = sigma;
-    }
+            // Thread-local cache to avoid recomputation and keep things thread-safe.
+            static thread_local int cached_radius = -1;
+            static thread_local float cached_sigma = -1.0f;
+            static thread_local std::vector<float> kernel;
 
-    return kernel;
-}
+            if (radius == 0) {
+                // Degenerate kernel for radius 0
+                if (cached_radius != 0 || kernel.size() != 1) {
+                    kernel.assign(1, 1.0f);
+                    cached_radius = 0;
+                    cached_sigma = 0.0f;
+                }
+                return kernel;
+            }
 
-} // namespace Gauss
+            const float sigma = default_sigma(radius);
+
+            // Only rebuild when radius or sigma changes
+            const int size = 2 * radius + 1;
+            if (cached_radius != radius || cached_sigma != sigma ||
+                static_cast<int>(kernel.size()) != size) {
+
+                kernel.resize(size);
+                const float twoSigma2 = 2.0f * sigma * sigma;
+                float sum = 0.0f;
+
+                // Build Gaussian weights symmetrically
+                for (int i = -radius; i <= radius; ++i) {
+                    float w = std::exp(-(i * i) / twoSigma2);
+                    kernel[i + radius] = w;
+                    sum += w;
+                }
+
+                // Normalize so the weights sum to 1
+                const float inv_sum = 1.0f / sum;
+                for (float& w : kernel) w *= inv_sum;
+
+                cached_radius = radius;
+                cached_sigma = sigma;
+                }
+
+            return kernel;
+        }
+
+    } // namespace Gauss
 } // namespace Filter
