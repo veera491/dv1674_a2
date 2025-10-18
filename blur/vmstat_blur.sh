@@ -35,7 +35,7 @@ INPUT_FILES=("im1.ppm" "im2.ppm" "im3.ppm" "im4.ppm")
 RADIUS=15
 
 for FILE in "${INPUT_FILES[@]}"; do
-    OUTPUT_FILE="${FILE%.*}_seq.ppm"
+    OUTPUT_FILE="blur_${FILE%.*}.ppm"
     iteration_start=$(date +%s%3N)
     start_time=$(date +%s%3N)
 

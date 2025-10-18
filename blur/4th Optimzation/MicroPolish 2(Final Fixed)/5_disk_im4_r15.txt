@@ -1,0 +1,50 @@
+Linux 6.15.6-arch1-1 (LegionArch) 	10/18/25 	_x86_64_	(16 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           2.98    0.01    0.90    0.09    0.00   96.01
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1          34.47       533.58       483.56         0.00   14845691   13453833          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           6.53    0.50    1.32    0.19    0.00   91.46
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1         549.00       484.00     11332.00         0.00        484      11332          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           6.83    0.00    0.56    0.00    0.00   92.61
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1           0.00         0.00         0.00         0.00          0          0          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           6.84    0.00    0.56    0.06    0.00   92.53
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1           0.00         0.00         0.00         0.00          0          0          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           6.64    0.69    0.94    0.44    0.00   91.29
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1         123.00      5036.00       144.00         0.00       5036        144          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           6.72    0.69    1.00    0.13    0.00   91.46
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1        2979.00      8480.00     57908.00         0.00       8480      57908          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           6.70    0.00    0.44    0.25    0.00   92.61
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1           2.00         0.00        60.00         0.00          0         60          0
+
