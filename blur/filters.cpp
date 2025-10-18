@@ -1,6 +1,5 @@
 /*
 Author: David Holmqvist <daae19@student.bth.se>
-Optimized by: (your names)
 */
 
 #include "filters.hpp"
@@ -13,11 +12,6 @@ Optimized by: (your names)
 #include <cstddef>
 #include <vector>
 
-// Optional backends (compile-time). Default keeps exact Gaussian FIR.
-//// #define FILTER_USE_BOX3
-//// #define FILTER_USE_IIR
-//// #define FILTER_USE_FFT
-
 #ifndef FILTER_SMALL_R_UNROLL
 #define FILTER_SMALL_R_UNROLL 8
 #endif
@@ -26,16 +20,15 @@ namespace Filter {
 
 namespace Gauss {
 
-// IMPLEMENTATION INCLUDED to satisfy the linker (same math as your original).
-// Builds weights[0..n] where weights[i] corresponds to offset ±i.
+// Implemented here to satisfy the linker and keep everything self-contained.
+// weights[i] is the coefficient for offset ±i (0..n) before normalization.
 void get_weights(int n, double* weights_out)
 {
-    // constants from your original code
+    // same constants as your original
     constexpr float max_x{1.33f};
     constexpr float pi{3.14159f};
 
-    for (int i = 0; i <= n; ++i)
-    {
+    for (int i = 0; i <= n; ++i) {
         double x = static_cast<double>(i) * max_x / static_cast<double>(n);
         weights_out[i] = std::exp(-x * x * pi);
     }
@@ -87,31 +80,19 @@ static inline void planar_to_matrix(const float* __restrict r,
     }
 }
 
-static inline void transpose_plane(const float* __restrict src,
-                                   float* __restrict dst,
-                                   unsigned W, unsigned H)
-{
-    for (unsigned y = 0; y < H; ++y) {
-        const unsigned row = y * W;
-        for (unsigned x = 0; x < W; ++x) {
-            dst[x * H + y] = src[row + x];
-        }
-    }
-}
-
-// Pre-pad a plane with reflected borders so the blur inner loop has no bounds checks.
+// Pre-pad with reflected borders so inner loops have no bounds checks.
 static inline void reflect_pad_plane(const float* __restrict in,
                                      float* __restrict out,
                                      unsigned W, unsigned H, int R)
 {
     const unsigned PW = W + 2u * static_cast<unsigned>(R);
-    // center copy
+    // 1) center copy
     for (unsigned y = 0; y < H; ++y) {
         const unsigned srcRow = y * W;
         const unsigned dstRow = (y + static_cast<unsigned>(R)) * PW + static_cast<unsigned>(R);
         std::copy(in + srcRow, in + srcRow + W, out + dstRow);
     }
-    // left/right reflect inside each padded row
+    // 2) left/right reflect in each row
     for (unsigned y = 0; y < H; ++y) {
         const unsigned dstRow = (y + static_cast<unsigned>(R)) * PW;
         for (int k = 0; k < R; ++k) {
@@ -121,39 +102,66 @@ static inline void reflect_pad_plane(const float* __restrict in,
                 out[dstRow + (static_cast<unsigned>(R) + W - 1u - static_cast<unsigned>(k))];
         }
     }
-    // top/bottom reflect full padded rows
-    const unsigned PWbytes = PW;
+    // 3) top/bottom reflect entire padded rows
     for (int k = 0; k < R; ++k) {
-        const unsigned srcTop    = (static_cast<unsigned>(R) + static_cast<unsigned>(k)) * PWbytes;
-        const unsigned srcBottom = (static_cast<unsigned>(R) + H - 1u - static_cast<unsigned>(k)) * PWbytes;
-        const unsigned dstTop    = (static_cast<unsigned>(R) - 1u - static_cast<unsigned>(k)) * PWbytes;
-        const unsigned dstBottom = (static_cast<unsigned>(R) + H + static_cast<unsigned>(k)) * PWbytes;
-        std::copy(out + srcTop,    out + srcTop    + PWbytes, out + dstTop);
-        std::copy(out + srcBottom, out + srcBottom + PWbytes, out + dstBottom);
+        const unsigned PWstride = PW;
+        const unsigned srcTop    = (static_cast<unsigned>(R) + static_cast<unsigned>(k)) * PWstride;
+        const unsigned srcBottom = (static_cast<unsigned>(R) + H - 1u - static_cast<unsigned>(k)) * PWstride;
+        const unsigned dstTop    = (static_cast<unsigned>(R) - 1u - static_cast<unsigned>(k)) * PWstride;
+        const unsigned dstBottom = (static_cast<unsigned>(R) + H + static_cast<unsigned>(k)) * PWstride;
+        std::copy(out + srcTop,    out + srcTop    + PWstride, out + dstTop);
+        std::copy(out + srcBottom, out + srcBottom + PWstride, out + dstBottom);
     }
 }
 
-// Convolve a single *padded* row branchlessly with symmetric Gaussian weights.
-static inline void horizontal_gauss_padded_row(const float* __restrict row_padded,
-                                               float* __restrict row_out,
-                                               unsigned W,
-                                               const std::vector<float>& gw,
-                                               int radius,
-                                               float norm_full)
+// Convolve one padded row (branchless) and write **transposed** into dstT.
+//  - row_pad points to the *start of the padded row* (left padding is at +0).
+//  - We write result for output row y_out into transposed buffer at (x,y) -> dstT[x*H + y_out].
+static inline void gauss_row_padded_to_transposed(const float* __restrict row_pad,
+                                                  float* __restrict dstT,
+                                                  unsigned W, unsigned H, unsigned y_out,
+                                                  const std::vector<float>& gw,
+                                                  int radius)
 {
-    const unsigned base = static_cast<unsigned>(radius); // first valid index into padded row
+    const unsigned base = static_cast<unsigned>(radius);   // first valid sample
+    // No divide here: gw is pre-normalized to sum to 1.0 with symmetric pairs.
     for (unsigned x = 0; x < W; ++x) {
         const unsigned cx = base + x;
-        float acc = gw[0] * row_padded[cx];
-
-        // Pair symmetric taps; interior is branch-free due to padding.
+        float acc = gw[0] * row_pad[cx];
         #pragma omp simd
         for (int k = 1; k <= radius; ++k) {
             const float w = gw[k];
-            acc += w * ( row_padded[cx - static_cast<unsigned>(k)]
-                       + row_padded[cx + static_cast<unsigned>(k)] );
+            acc += w * ( row_pad[cx - static_cast<unsigned>(k)] +
+                         row_pad[cx + static_cast<unsigned>(k)] );
         }
-        row_out[x] = acc / norm_full;
+        // transpose write (x,y_out) -> [x*H + y_out]
+        dstT[x * H + y_out] = acc;
+    }
+}
+
+// Convolve one padded row (of the transposed image) and write **directly into final layout**.
+//  - For transposed grid (TW x TH) with TW=H, TH=W:
+//      output (x, y) in transposed corresponds to final (y, x),
+//      index in final planar = y * W + x.
+static inline void gauss_row_padded_transposed_to_final(const float* __restrict row_pad,
+                                                        float* __restrict dst_final,
+                                                        unsigned TW, unsigned TH, unsigned y_tr,
+                                                        const std::vector<float>& gw,
+                                                        int radius, unsigned W /*final width*/)
+{
+    const unsigned base = static_cast<unsigned>(radius);
+    // y_tr runs over [0..TH-1], x runs [0..TW-1]; final(y,x) -> y*W + x
+    for (unsigned x = 0; x < TW; ++x) {
+        const unsigned cx = base + x;
+        float acc = gw[0] * row_pad[cx];
+        #pragma omp simd
+        for (int k = 1; k <= radius; ++k) {
+            const float w = gw[k];
+            acc += w * ( row_pad[cx - static_cast<unsigned>(k)] +
+                         row_pad[cx + static_cast<unsigned>(k)] );
+        }
+        const unsigned out_index = y_tr * W + x; // (y_final=W-row index, x_final=column)
+        dst_final[out_index] = acc;
     }
 }
 
@@ -167,83 +175,67 @@ Matrix blur(Matrix m, const int radius)
         return m;
     }
 
-    // Precompute Gaussian weights (exact FIR, your formula), convert to float.
+    // 1) Precompute Gaussian weights (0..R) and **normalize to sum==1**
+    //    With reflected padding, every pixel has a full neighborhood,
+    //    so we can normalize once and avoid per-pixel division.
     std::vector<double> gw_d(static_cast<std::size_t>(radius) + 1);
     Gauss::get_weights(radius, gw_d.data());
+
+    // sum_full = w0 + 2*sum_{k=1..R} wk
+    double sum_full = gw_d[0];
+    for (int k = 1; k <= radius; ++k) sum_full += 2.0 * gw_d[k];
+    const float inv_sum = static_cast<float>(1.0 / sum_full);
+
+    // convert to normalized float weights
     std::vector<float> gw(gw_d.size());
-    for (std::size_t i = 0; i < gw.size(); ++i) gw[i] = static_cast<float>(gw_d[i]);
+    gw[0] = static_cast<float>(gw_d[0]) * inv_sum;
+    for (int k = 1; k <= radius; ++k) {
+        gw[k] = static_cast<float>(gw_d[k]) * inv_sum;
+    }
 
-    // Full normalization for interior (symmetric kernel).
-    float norm_full = gw[0];
-    for (int i = 1; i <= radius; ++i) norm_full += 2.0f * gw[i];
-
-    // Convert to planar (SoA)
+    // 2) Convert to planar
     const std::size_t N = static_cast<std::size_t>(W) * static_cast<std::size_t>(H);
     std::vector<float> r_in(N), g_in(N), b_in(N);
     matrix_to_planar(m, r_in.data(), g_in.data(), b_in.data());
 
-    // ---- Pass 1: horizontal on rows with reflected padding, write transposed ----
+    // 3) Reflected padding for the original (W x H)
     const unsigned PW = W + 2u * static_cast<unsigned>(radius);
-    const std::size_t NP = static_cast<std::size_t>(PW) * static_cast<std::size_t>(H + 2u * static_cast<unsigned>(radius));
+    const unsigned PH = H + 2u * static_cast<unsigned>(radius);
+    const std::size_t NP = static_cast<std::size_t>(PW) * static_cast<std::size_t>(PH);
     std::vector<float> rp(NP), gp(NP), bp(NP);
     reflect_pad_plane(r_in.data(), rp.data(), W, H, radius);
     reflect_pad_plane(g_in.data(), gp.data(), W, H, radius);
     reflect_pad_plane(b_in.data(), bp.data(), W, H, radius);
 
-    // temp row buffers (untransposed outputs of pass 1)
-    std::vector<float> rowR(W), rowG(W), rowB(W);
-    // transposed after pass 1: dims H x W
-    std::vector<float> r_tr(N), g_tr(N), b_tr(N);
-
+    // 4) Pass 1: horizontal on padded rows, **write transposed** directly (HxW buffers)
+    std::vector<float> r_tr(N), g_tr(N), b_tr(N); // dims H x W
     for (unsigned y = 0; y < H; ++y) {
-        // padded row start (skip the left padding by +radius)
-        const unsigned prow = (y + static_cast<unsigned>(radius)) * PW;
-
-        horizontal_gauss_padded_row(rp.data() + prow, rowR.data(), W, gw, radius, norm_full);
-        horizontal_gauss_padded_row(gp.data() + prow, rowG.data(), W, gw, radius, norm_full);
-        horizontal_gauss_padded_row(bp.data() + prow, rowB.data(), W, gw, radius, norm_full);
-
-        // transpose write: (x,y) -> (y,x) : dst[x*H + y]
-        for (unsigned x = 0; x < W; ++x) {
-            r_tr[x * H + y] = rowR[x];
-            g_tr[x * H + y] = rowG[x];
-            b_tr[x * H + y] = rowB[x];
-        }
+        const unsigned prow = (y + static_cast<unsigned>(radius)) * PW; // start of that padded row
+        gauss_row_padded_to_transposed(rp.data() + prow, r_tr.data(), W, H, y, gw, radius);
+        gauss_row_padded_to_transposed(gp.data() + prow, g_tr.data(), W, H, y, gw, radius);
+        gauss_row_padded_to_transposed(bp.data() + prow, b_tr.data(), W, H, y, gw, radius);
     }
 
-    // ---- Pass 2: run the same horizontal kernel over the transposed image ----
-    const unsigned TW = H, TH = W;
-
+    // 5) Reflected padding for the transposed image (TW x TH) = (H x W)
+    const unsigned TW = H, TH = W; // transposed dims
     const unsigned TPW = TW + 2u * static_cast<unsigned>(radius);
-    const std::size_t TNP = static_cast<std::size_t>(TPW) * static_cast<std::size_t>(TH + 2u * static_cast<unsigned>(radius));
+    const unsigned TPH = TH + 2u * static_cast<unsigned>(radius);
+    const std::size_t TNP = static_cast<std::size_t>(TPW) * static_cast<std::size_t>(TPH);
     std::vector<float> rtp(TNP), gtp(TNP), btp(TNP);
     reflect_pad_plane(r_tr.data(), rtp.data(), TW, TH, radius);
     reflect_pad_plane(g_tr.data(), gtp.data(), TW, TH, radius);
     reflect_pad_plane(b_tr.data(), btp.data(), TW, TH, radius);
 
-    std::vector<float> rowRT(TW), rowGT(TW), rowBT(TW);
-    std::vector<float> r_tr2(N), g_tr2(N), b_tr2(N);
-
-    for (unsigned y = 0; y < TH; ++y) {
-        const unsigned prow = (y + static_cast<unsigned>(radius)) * TPW;
-
-        horizontal_gauss_padded_row(rtp.data() + prow, rowRT.data(), TW, gw, radius, norm_full);
-        horizontal_gauss_padded_row(gtp.data() + prow, rowGT.data(), TW, gw, radius, norm_full);
-        horizontal_gauss_padded_row(btp.data() + prow, rowBT.data(), TW, gw, radius, norm_full);
-
-        // write back “untransposed on transposed grid”
-        const unsigned row = y * TW;
-        std::copy(rowRT.begin(), rowRT.end(), r_tr2.begin() + row);
-        std::copy(rowGT.begin(), rowGT.end(), g_tr2.begin() + row);
-        std::copy(rowBT.begin(), rowBT.end(), b_tr2.begin() + row);
+    // 6) Pass 2: horizontal on padded transposed rows, **write back directly** into final (WxH)
+    std::vector<float> r_out(N), g_out(N), b_out(N);
+    for (unsigned y_tr = 0; y_tr < TH; ++y_tr) {
+        const unsigned prow = (y_tr + static_cast<unsigned>(radius)) * TPW;
+        gauss_row_padded_transposed_to_final(rtp.data() + prow, r_out.data(), TW, TH, y_tr, gw, radius, W);
+        gauss_row_padded_transposed_to_final(gtp.data() + prow, g_out.data(), TW, TH, y_tr, gw, radius, W);
+        gauss_row_padded_transposed_to_final(btp.data() + prow, b_out.data(), TW, TH, y_tr, gw, radius, W);
     }
 
-    // ---- Transpose back to WxH and pack to Matrix ----
-    std::vector<float> r_out(N), g_out(N), b_out(N);
-    transpose_plane(r_tr2.data(), r_out.data(), TW, TH);
-    transpose_plane(g_tr2.data(), g_out.data(), TW, TH);
-    transpose_plane(b_tr2.data(), b_out.data(), TW, TH);
-
+    // 7) Pack back to Matrix
     Matrix dst{m};
     planar_to_matrix(r_out.data(), g_out.data(), b_out.data(), dst);
     return dst;
