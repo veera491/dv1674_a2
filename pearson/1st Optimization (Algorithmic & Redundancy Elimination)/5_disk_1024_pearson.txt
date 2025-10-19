@@ -1,0 +1,71 @@
+Linux 6.15.6-arch1-1 (LegionArch) 	10/19/25 	_x86_64_	(16 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           2.22    0.01    0.81    0.09    0.00   96.87
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1          37.31       384.28       391.66         0.00   37575259   38296553          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          10.75    0.44    2.47    0.25    0.00   86.09
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1         743.00      8592.00     12404.00         0.00       8592      12404          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           7.53    0.00    1.19    0.25    0.00   91.03
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1           3.00        12.00         0.00         0.00         12          0          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           7.28    0.00    0.69    0.00    0.00   92.03
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1           2.00         8.00         0.00         0.00          8          0          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          11.69    3.14   12.45    0.25    0.00   72.47
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1          89.00      2932.00       728.00         0.00       2932        728          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          11.69    3.35   15.22    2.21    0.00   67.53
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1        5075.00    201448.00        52.00         0.00     201448         52          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          19.87    4.57   16.76    1.08    0.00   57.71
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1        3933.00    128132.00      7304.00         0.00     128132       7304          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          18.07    2.54   17.37    0.44    0.00   61.57
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1        9704.00     14456.00    140000.00         0.00      14456     140000          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          16.45    1.27   17.33    0.13    0.00   64.83
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1        1033.00      2984.00     21476.00         0.00       2984      21476          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          14.38    1.27   14.63    0.13    0.00   69.60
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1          26.00       568.00       160.00         0.00        568        160          0
+

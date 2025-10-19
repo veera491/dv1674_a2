@@ -1,0 +1,6 @@
+Linux 6.15.6-arch1-1 (LegionArch) 	10/19/25 	_x86_64_	(16 CPU)
+
+00:54:22      UID      TGID       TID    %usr %system  %guest   %wait    %CPU   CPU  Command
+00:54:23     1000    670540         -   97.00    2.00    0.00    0.00   99.00     6  blur_par
+00:54:23     1000         -    670540   15.00    2.00    0.00    0.00   17.00     6  |__blur_par
+00:54:23     1000         -    670553   37.00    0.00    0.00    0.00   37.00     2  |__blur_par

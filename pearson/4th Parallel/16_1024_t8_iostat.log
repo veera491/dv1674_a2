@@ -1,0 +1,36 @@
+Linux 6.15.6-arch1-1 (LegionArch) 	10/19/25 	_x86_64_	(16 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           2.34    0.02    0.89    0.09    0.00   96.66
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1          57.62       654.70       513.35         0.00   69212104   54269509          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          18.10    0.69    3.46    0.57    0.00   77.18
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1         922.00     28844.00     12716.00         0.00      28844      12716          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           1.62    1.31   10.29    0.00    0.00   86.78
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1         141.00         0.00       588.00         0.00          0        588          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           1.75    1.19   10.19    0.00    0.00   86.88
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1           0.00         0.00         0.00         0.00          0          0          0
+
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           1.69    1.25   10.26    0.25    0.00   86.55
+
+Device             tps    kB_read/s    kB_wrtn/s    kB_dscd/s    kB_read    kB_wrtn    kB_dscd
+nvme0n1           8.00        52.00         0.00         0.00         52          0          0
+
