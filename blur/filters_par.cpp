@@ -1,6 +1,6 @@
 /*
 Author: David Holmqvist <daae19@student.bth.se>
-Parallelized by: Nithin
+Parallelized by: Nithin, VEERA
 */
 
 #include "filters_par.hpp"

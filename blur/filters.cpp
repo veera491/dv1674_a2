@@ -1,6 +1,6 @@
 /*
 Author: David Holmqvist <daae19@student.bth.se>
-Optimized by: (your names)
+Optimized by: Veera, Nithin
 */
 
 #include "filters.hpp"
